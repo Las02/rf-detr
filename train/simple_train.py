@@ -12,24 +12,76 @@ Augmentation pipeline:
   - Perspective, Defocus, RandomSunFlare
 """
 
+import random
 from pathlib import Path
 
+import numpy as np
 import typer
+from PIL import Image, ImageDraw, ImageFont
 from rfdetr import RFDETRLarge
 
 app = typer.Typer(add_completion=False)
 
-import cv2
-import numpy as np
+_FONT_PATH = Path(__file__).parent / "HomemadeApple-Regular.ttf"
 
-def add_colony_metadata(image, **kwargs):
-    # Copy to avoid modifying the original array in-place
-    img = image.copy()
-    text = "Colony-Scanner-v1"
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    # Place text at bottom-left
-    cv2.putText(img, text, (10, img.shape[0] - 10), font, 0.6, (255, 255, 255), 1)
-    return img
+# Realistic lab annotation fragments written on petri dish lids
+_HANDWRITTEN_TEXTS = [
+    # Dilution series (most common annotation on petri dishes)
+    "10-1", "10-2", "10-3", "10-4", "10-5", "10-6",
+    "1:10", "1:100", "1:1000",
+    # Controls
+    "neg", "pos", "ctrl", "blank", "wt",
+    # Selective media / antibiotic conditions
+    "+Amp", "-Amp", "+Kan", "Cm", "Tet",
+    # Organism shorthands
+    "E.coli", "S.aur", "B.sub", "K.pneu",
+    # Colony count results
+    "TNTC", ">300", "<10", "0",
+    # Sample / plate IDs
+    "S1", "S2", "S3", "P1", "P2",
+    "A1", "A2", "B1", "B2",
+    # Initials + date fragments
+    "LM", "JK", "TK", "AH",
+    "12/3", "03-24", "Jan15",
+    # Incubation / experiment notes
+    "37C", "30C", "RT", "ON",
+    "Rep1", "Rep2", "n=3",
+]
+
+
+def _handwritten_text(image: np.ndarray, **kwargs) -> np.ndarray:
+    """Draw 1–3 handwritten-style annotations at random positions."""
+    pil = Image.fromarray(image)
+    draw = ImageDraw.Draw(pil)
+    h, w = image.shape[:2]
+
+    for _ in range(random.randint(1, 3)):
+        text = random.choice(_HANDWRITTEN_TEXTS)
+        size = random.randint(max(14, h // 25), max(28, h // 12))
+        try:
+            font = ImageFont.truetype(str(_FONT_PATH), size)
+        except OSError:
+            font = ImageFont.load_default()
+
+        # Dark ink (blue-black) most of the time; occasionally light for contrast
+        if random.random() < 0.75:
+            color = (random.randint(0, 50), random.randint(0, 50), random.randint(40, 100))
+        else:
+            color = (random.randint(180, 255),) * 3
+
+        # Render text onto a transparent scratch canvas, rotate, then position
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        scratch = Image.new("RGBA", (tw + 4, th + 4), (0, 0, 0, 0))
+        ImageDraw.Draw(scratch).text((2 - bbox[0], 2 - bbox[1]), text, font=font, fill=(*color, 255))
+        scratch = scratch.rotate(random.uniform(-45, 45), expand=True)
+
+        # Pick position after rotation so the full rotated stamp fits in the image
+        px = random.randint(0, max(0, w - scratch.width))
+        py = random.randint(0, max(0, h - scratch.height))
+        pil.paste(scratch, (px, py), mask=scratch)
+
+    return np.array(pil)
 
 AUG_COLONY: dict = {
     "HorizontalFlip":           {"p": 0.5},
@@ -43,10 +95,10 @@ AUG_COLONY: dict = {
 }
 
 AUG_COLONY_EXTRA: dict = {
-    "Defocus":        {"p": 0.8},
+    "Defocus":        {"p": 0.05},
     "RandomSunFlare": {"p":0.05},
     "RandomShadow": {"p":0.05},
-    "Lambda": {"image": add_colony_metadata, "p": 1.0},
+    "Lambda": {"image": _handwritten_text, "p": 0.2},
 }
 
 
