@@ -5,6 +5,65 @@ bypassing `model.train()` to inject domain-specific augmentations online.
 
 ## Scripts
 
+### `simple_train.py`
+
+Trains an `RFDETRMedium` model using `rfdetr.train()` with an `aug_config` dict.
+Simpler than `train_colony.py` — no custom training loop.
+
+W&B logging is always enabled. Pass `--project` and `--run` to configure.
+
+**Augmentation pipeline (`AUG_COLONY`):**
+
+| Transform | Probability | Notes |
+|-----------|------------|-------|
+| LongestMaxSize | 1.0 | Scales down to max 2024px; small images unchanged |
+| PadIfNeeded | 1.0 | Pads to 2024×2024 with black border |
+| HorizontalFlip | 0.5 | |
+| VerticalFlip | 0.5 | |
+| Rotate ±180° | 0.5 | BORDER_CONSTANT fill |
+| RandomSizedCrop | 0.8 | Crops 778–1124px from 2024px base — simulates 4-slice (1124px) to 9-slice (778px) SAHI with 20% overlap |
+| RandomBrightnessContrast | 0.3 | |
+| HueSaturationValue | 0.3 | |
+| ISONoise | 0.3 | |
+| ImageCompression | 0.3 | |
+| ChannelDropout | 0.3 | |
+
+**Extra augmentations (`AUG_COLONY_EXTRA`, `--extra` flag):**
+
+| Transform | Probability | Notes |
+|-----------|------------|-------|
+| Defocus | 0.05 | |
+| RandomSunFlare | 0.05 | |
+| RandomShadow | 0.05 | |
+| Lambda (_handwritten_text) | 0.3 | Draws realistic lab annotations on the image |
+
+**SAHI crop rationale:**
+Images are normalised to 2024×2024 before cropping. Crop sizes derived from
+`slice_size = 2024 / (1 + (n-1) × 0.8)`:
+- 4 slices → 1124px, 9 slices → 778px. `RandomSizedCrop` samples continuously
+between these, covering both inference modes.
+
+**Usage:**
+
+```bash
+uv run --with typer python train/simple_train.py \
+    --dataset-dir /path/to/dataset \
+    --project colony-counter \
+    --run my-run
+
+# With extra augmentations
+uv run --with typer python train/simple_train.py \
+    --dataset-dir /path/to/dataset \
+    --extra
+
+# Resume from checkpoint
+uv run --with typer python train/simple_train.py \
+    --dataset-dir /path/to/dataset \
+    --resume output/colony/checkpoint.pth
+```
+
+---
+
 ### `train_colony.py`
 
 Trains an `RFDETRLarge` model on a colony-counting (petri dish) COCO dataset with an

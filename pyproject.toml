@@ -50,6 +50,7 @@ dependencies = [
     "roboflow",
     "albumentations>=1.0.0,<2.0.0",
     "typer>=0.24.0",
+    "fiftyone>=1.13.3",
 ]
 
 [project.optional-dependencies]
@@ -90,6 +91,9 @@ docs = [
     "mkdocs-jupyter>=0.24.3",
     "mkdocs-git-committers-plugin-2>=2.4.1",
     "mkdocs-git-revision-date-localized-plugin>=1.2.4"
+]
+dev = [
+    "rfdetr[metrics]",
 ]
 
 [project.urls]
@@ -145,3 +149,6 @@ markers = [
 
 [tool.codespell]
 skip = "*.pth"
+
+[tool.uv.sources]
+rfdetr = { workspace = true }
